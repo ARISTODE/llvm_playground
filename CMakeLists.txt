@@ -13,10 +13,10 @@ link_directories(${LLVM_LIBRARY_DIRS})
 #
 # Files associated with libtmplugin.so
 #
+
 add_library(llvm_playground MODULE
     llvm_test.cpp
 )
-
 
 #
 # Turn on C++11, turn off C++ RTTI.
@@ -24,6 +24,7 @@ add_library(llvm_playground MODULE
 target_compile_features(llvm_playground PRIVATE cxx_range_for cxx_auto_type)
 set_target_properties(llvm_playground PROPERTIES COMPILE_FLAGS "-fno-rtti")
 
+set(CMAKE_CXX_FLAGS "-e main")
 #
 # OS X-specific configuration
 #

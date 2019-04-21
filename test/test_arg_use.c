@@ -25,6 +25,8 @@ void printAge(Person *p) {
     //int age = getAge(p);
     int age = p->age; 
     char *name = p->name;
+    char *a = "hi";
+    char *b = a + 1;
     //printf("Age is %d, name is %s\n", age, name);
     changeAge(p);
     //printf("Changed age is %d\n", p->age);

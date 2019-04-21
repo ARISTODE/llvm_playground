@@ -8,6 +8,9 @@
 #include "llvm/Analysis/MemoryBuiltins.h"
 #include "llvm/Analysis/MemoryDependenceAnalysis.h"
 #include "llvm/Analysis/TargetLibraryInfo.h"
+#include "llvm/IR/GlobalAlias.h"
+#include "llvm/IR/DebugInfo.h"
+#include "llvm/IR/GlobalVariable.h"
 
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/IR/Function.h"
@@ -16,6 +19,9 @@
 #include <vector>
 #include <set>
 #include <string.h>
+#include <map>
+#include <fstream>
+#include <sstream>
 
 namespace {
     using namespace llvm;
@@ -49,40 +55,160 @@ namespace {
             return nullptr;
         }
 
-        bool runOnModule(Module &M)
+        std::string getDIFieldName(DIType *ty)
         {
-            for (Function &F : M)
+            if (ty == nullptr)
+                return "void";
+            switch (ty->getTag())
             {
-                if (F.isDeclaration() or F.getName() == "main")
+                case dwarf::DW_TAG_member:
+                    {
+                        return ty->getName().str();
+                    }
+                case dwarf::DW_TAG_array_type:
+                    {
+                        ty = dyn_cast<DICompositeType>(ty)->getBaseType().resolve();
+                        return "arr_" + ty->getName().str();
+                    }
+                case dwarf::DW_TAG_pointer_type:
+                    {
+                        std::string s = getDIFieldName(dyn_cast<DIDerivedType>(ty)->getBaseType().resolve());
+                        return s;
+                    }
+                case dwarf::DW_TAG_subroutine_type:
+                    return "func ptr";
+                case dwarf::DW_TAG_const_type:
+                    {
+                        std::string s = getDIFieldName(dyn_cast<DIDerivedType>(ty)->getBaseType().resolve());
+                        return s;
+                    }
+                default:
+                    {
+                        if (!ty->getName().str().empty())
+                            return ty->getName().str();
+                        return "no name";
+                    }
+            }
+        }
+
+        DIType *getBaseDIType(DIType *Ty) {
+            if (Ty == nullptr)
+                return nullptr;
+
+            if (Ty->getTag() == dwarf::DW_TAG_pointer_type ||
+                    Ty->getTag() == dwarf::DW_TAG_member ||
+                    Ty->getTag() == dwarf::DW_TAG_typedef)
+            {
+                DIType *baseTy = dyn_cast<DIDerivedType>(Ty)->getBaseType().resolve();
+                if (!baseTy)
                 {
-                    continue;
+                    errs() << "Type : NULL - Nothing more to do\n";
+                    return nullptr;
+                }
+                return baseTy;
+            }
+            return Ty;
+        }
+
+        DIType *getLowestDIType(DIType *Ty) 
+        {
+            if (Ty->getTag() == dwarf::DW_TAG_pointer_type ||
+                    Ty->getTag() == dwarf::DW_TAG_member ||
+                    Ty->getTag() == dwarf::DW_TAG_typedef ||
+                    Ty->getTag() == dwarf::DW_TAG_const_type)
+            {
+                DIType *baseTy = dyn_cast<DIDerivedType>(Ty)->getBaseType().resolve();
+                if (!baseTy)
+                {
+                    errs() << "Type : NULL - Nothing more to do\n";
+                    return NULL;
                 }
 
-                for (Argument &arg : F.args())
+                //Skip all the DINodes with DW_TAG_typedef tag
+                while ((baseTy->getTag() == dwarf::DW_TAG_typedef ||
+                            baseTy->getTag() == dwarf::DW_TAG_const_type ||
+                            baseTy->getTag() == dwarf::DW_TAG_pointer_type))
                 {
-                    if (!isa<PointerType>(arg.getType()))
-                    {
-                        continue;
+                    if (DITypeRef temp = dyn_cast<DIDerivedType>(baseTy)->getBaseType())
+                        baseTy = temp.resolve();
+                    else
+                        break;
+                }
+                return baseTy;
+            }
+            return Ty;
+        }
+
+        bool runOnModule(Module &M)
+        {
+            std::ofstream imported_func("imported_func.txt");
+            std::ofstream defined_func("defined_func.txt");
+            std::ofstream static_funcptr("static_funcptr.txt");
+            for (auto &F : M) {
+                if (F.isDeclaration())
+                    imported_func << F.getName().str() << "\n";
+                else
+                    defined_func << F.getName().str() << "\n";
+            }
+            imported_func.close();
+            defined_func.close();
+
+            SmallVector<DIGlobalVariableExpression*, 4> sv;
+            for (auto &Global : M.getGlobalList()) {
+                DIGlobalVariable* gv = nullptr;
+                Global.getDebugInfo(sv); 
+                /* errs() << Global.getName() << " " << sv.size() << "\n"; */
+                for (auto d : sv) {
+                    if (d->getVariable()->getName() == Global.getName()) {
+                        gv = d->getVariable();  // get global variable from global expression
                     }
+                }
 
-                    PointerType *pt = dyn_cast<PointerType>(arg.getType());
-                    Type *eleTy = pt->getElementType();
+                if (gv == nullptr)
+                    continue;
 
-                    if (eleTy->isSingleValueType())
-                    {
-                        continue;
-                    }
+                auto gvDItype = gv->getType().resolve();
+                if (getLowestDIType(gvDItype)->getTag() != dwarf::DW_TAG_structure_type) 
+                    continue;
 
-                    for (unsigned int i = 0; i < eleTy->getNumContainedTypes(); i++)
-                    {
-                        Type* curTy = arg.getType()->getContainedType(0)->getContainedType(i);
-                        errs() << "[" << F.getName().str() << "]" << curTy->getTypeID() << "\n";
-                        // if (PointerType* subPt = dyn_cast<PointerType>(curTy)) {
-                        //     errs() << ""
-                        // }
+                const auto &typeArrRef = dyn_cast<DICompositeType>(getLowestDIType(gvDItype))->getElements();
+                if (Global.getType()->isPointerTy()) {
+                    auto pointerEle = Global.getType()->getPointerElementType();
+                    /* errs() << typeArrRef.size() << " - " << pointerEle->getStructNumElements() << "\n"; */
+                    if (pointerEle->isStructTy()) {
+                        for (unsigned i = 0; i < pointerEle->getStructNumElements(); ++i) {
+                            if (!Global.hasInitializer()) 
+                                continue;
+                            auto cons = Global.getInitializer()->getAggregateElement(i);
+                            if (cons != nullptr) {
+                                if (cons->hasName()) {
+                                    static_funcptr << getDIFieldName(dyn_cast<DIType>(typeArrRef[i])) << "\n";
+                                }
+                            }
+                        }
                     }
                 }
             }
+            static_funcptr.close();
+            /* aliasName = {"NoAlias", "MayAlias", "PartialAlias", "MustAlias"}; */
+            /* for (Function &F : M)  { */
+            /*     /1* if (F.getName() != "func2") *1/ */ 
+            /*     /1*     continue; *1/ */
+            /*     if (F.isDeclaration()) */
+            /*         continue; */
+            /*     AA = &getAnalysis<AAResultsWrapperPass>(F).getAAResults(); */
+            /*     for (auto I1 = inst_begin(F); I1 != inst_end(F); ++I1) { */
+            /*         for (auto GVI = M.global_begin(); GVI != M.global_end(); ++GVI) { */
+            /*             if (Value *v1 = dyn_cast<Value>(&*I1)) { */
+            /*                 if (GlobalVariable *v2 = dyn_cast<GlobalVariable>(&*GVI)) { */
+            /*                     auto aaRes = AA->alias(v1, v2); */
+            /*                     errs() << *v1 << " - " << *v2 << " " << aliasName[aaRes] << "\n"; */
+            /*                 } */
+            /*             } */
+            /*         } */
+            /*     } */
+            /* } */
+
             return false;
         }
 
@@ -189,7 +315,7 @@ namespace {
         //                 /*     continue; */
         //                 /* } */
         //                 MemoryLocation S_Loc = MemoryLocation::get(si);
-                        
+
         //                 for (Instruction *li : loadvec) {
         //                     MemoryLocation SS_Loc = MemoryLocation::get(li);
         //                     //AliasResult AA_Result = AA->alias(S_Loc, L_Loc);
@@ -213,16 +339,16 @@ namespace {
         void getAnalysisUsage(AnalysisUsage &AU) const {
             AU.addRequired<AAResultsWrapperPass>();
             AU.addRequired<MemoryDependenceWrapperPass>();
-            AU.addRequired<CFLSteensAAWrapperPass>();
-            AU.addRequired<CFLAndersAAWrapperPass>();
+            /* AU.addRequired<CFLSteensAAWrapperPass>(); */
+            /* AU.addRequired<CFLAndersAAWrapperPass>(); */
             AU.addRequired<TargetLibraryInfoWrapperPass>();
             AU.setPreservesAll();
         }
 
-    private:
+        private:
         AliasAnalysis *AA;
-        CFLSteensAAResult *steensAA;
-        CFLAndersAAResult *andersAA;
+        /* CFLSteensAAResult *steensAA; */
+        /* CFLAndersAAResult *andersAA; */
         std::vector<std::string> aliasName;
     };
 
@@ -230,4 +356,7 @@ namespace {
     static RegisterPass<llvmTest> llvmTest("llvm-test", "LLVM TEST", false, true);
 } // namespace
 
+int main(int argc, char** argv) {
+    errs() << "Hello world!" << "\n";
+}
 #endif

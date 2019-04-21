@@ -11,10 +11,12 @@ void func1(char *name) {
     strncpy(name, "new_name", 10);
 }
 
-void func2(int* age) {
-    int *tmp_age = age;
-    printf("%d", *tmp_age);
-    *age = 20;
+void func2(int* age) { 
+    /* int *tmp_age = age; */
+    int **tt = &age;
+    int *age1 = *tt;
+    /* printf("%d", *tmp_age); */
+    /* *age = 20; */
 }
 
 void func3(int age) {
