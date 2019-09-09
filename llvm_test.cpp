@@ -141,14 +141,37 @@ namespace {
 
         bool runOnModule(Module &M)
         {
+            // unsigned instCount = 0;
+            // for (auto &F : M)
+            // {
+            //     for (BasicBlock &bb : F)
+            //         instCount += std::distance(bb.begin(), bb.end());
+            // }
+            // errs() << "Number of inst: " << instCount << "\n";
+
             std::ofstream imported_func("imported_func.txt");
             std::ofstream defined_func("defined_func.txt");
             std::ofstream static_funcptr("static_funcptr.txt");
+            std::ofstream static_func("static_func.txt");
+            std::ofstream lock_func("lock_func.txt");
+
             for (auto &F : M) {
-                if (F.isDeclaration())
-                    imported_func << F.getName().str() << "\n";
-                else
-                    defined_func << F.getName().str() << "\n";
+                auto funcName = F.getName().str();
+
+                if (F.isIntrinsic())
+                    continue;
+
+                if (F.isDeclaration()) {
+                    imported_func << funcName << "\n";
+
+                    if (funcName.find("lock") != std::string::npos) 
+                        lock_func << funcName << "\n";
+
+                    continue;
+                }
+
+
+                defined_func << funcName << "\n";
             }
             imported_func.close();
             defined_func.close();
@@ -183,6 +206,7 @@ namespace {
                             if (cons != nullptr) {
                                 if (cons->hasName()) {
                                     static_funcptr << getDIFieldName(dyn_cast<DIType>(typeArrRef[i])) << "\n";
+                                    static_func << cons->getName().str() << "\n";
                                 }
                             }
                         }
@@ -190,6 +214,8 @@ namespace {
                 }
             }
             static_funcptr.close();
+            static_func.close();
+
             /* aliasName = {"NoAlias", "MayAlias", "PartialAlias", "MustAlias"}; */
             /* for (Function &F : M)  { */
             /*     /1* if (F.getName() != "func2") *1/ */ 
