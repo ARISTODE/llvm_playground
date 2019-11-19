@@ -1,8 +1,8 @@
-cmake_minimum_required(VERSION 3.1)
+cmake_minimum_required(VERSION 3.4.3)
 project(llvm_playground)
 find_package(LLVM REQUIRED CONFIG)
-add_definitions(${LLVM_DEFINITIONS})
 include_directories(${LLVM_INCLUDE_DIRS})
+add_definitions(${LLVM_DEFINITIONS})
 link_directories(${LLVM_LIBRARY_DIRS})
 
 #
@@ -17,6 +17,8 @@ link_directories(${LLVM_LIBRARY_DIRS})
 add_library(llvm_playground MODULE
     llvm_test.cpp
 )
+
+target_link_libraries(llvm_playground ${llvm_libs})
 
 #
 # Turn on C++11, turn off C++ RTTI.
