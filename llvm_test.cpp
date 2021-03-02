@@ -1,40 +1,19 @@
 #ifndef LLVM_TEST_H
 #define LLVM_TEST_H
 
-#include "llvm/Analysis/AliasAnalysis.h"
-#include "llvm/Analysis/CFLSteensAliasAnalysis.h"
-#include "llvm/Analysis/CFLAndersAliasAnalysis.h"
-#include "llvm/Analysis/MemoryLocation.h"
-#include "llvm/Analysis/MemoryBuiltins.h"
-#include "llvm/Analysis/MemoryDependenceAnalysis.h"
 #include "llvm/IR/GlobalAlias.h"
 #include "llvm/IR/DebugInfo.h"
 #include "llvm/IR/GlobalVariable.h"
-#include "llvm/IR/CFG.h"
-#include "llvm/InitializePasses.h"
-
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/Instructions.h" 
 #include "llvm/IR/InstIterator.h"
 #include "llvm/IR/InstrTypes.h"
 #include "ProgramDependencyGraph.hh"
-// svf
-/* #include "SVF-FE/PAGBuilder.h" */
-/* #include "WPA/Andersen.h" */
-/* #include "SVF-FE/LLVMUtil.h" */
-// sea_dsa
-// #include "seadsa/CompleteCallGraph.hh"
-// #include "seadsa/CallGraphUtils.hh"
-// #include "seadsa/DsaAnalysis.hh"
-// #include "seadsa/Global.hh"
 
 #include <vector>
 #include <set>
-#include <string.h>
 #include <map>
-#include <fstream>
-#include <sstream>
 
 namespace {
     using namespace llvm;
@@ -76,8 +55,9 @@ namespace {
 
                 return false;
             }
+
             llvm::StringRef getPassName() const override { return "LLVM Test"; }
-            // Analysis Usage, specify PDG at this time
+
             void getAnalysisUsage(AnalysisUsage &AU) const override
             {
                 AU.addRequired<pdg::ProgramDependencyGraph>();
@@ -87,11 +67,5 @@ namespace {
 
     char llvmTest::ID = 0;
     static RegisterPass<llvmTest> X("llvm-test", "LLVM TEST", false, true);
-    // static void registerTestPassPass(const PassManagerBuilder &, llvm::legacy::PassManagerBase &PM)
-    // {
-    //   PM.add(new seadsa::DsaAnalysis());
-    //   PM.add(new llvmTest());
-    // }
-    // static RegisterStandardPasses RegisterTestPassPass(PassManagerBuilder::EP_EarlyAsPossible, registerTestPassPass);
 } // namespace
 #endif
